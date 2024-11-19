@@ -17,6 +17,7 @@ from terratorch.registry import MODEL_FACTORY_REGISTRY
 from terratorch.tasks.loss_handler import LossHandler
 from terratorch.tasks.optimizer_factory import optimizer_factory
 from terratorch.tasks.tiled_inference import TiledInferenceParameters, tiled_inference
+from terratorch.my_profiler import PROFILER
 
 BATCH_IDX_FOR_VALIDATION_PLOTTING = 10
 
@@ -126,6 +127,32 @@ class SemanticSegmentationTask(BaseTask):
             self.model.freeze_encoder()
         if self.hparams["freeze_decoder"]:
             self.model.freeze_decoder()
+        print("Adding hooks...")
+
+        def get_hook(model_name):
+            def memory_hook(module, input, output):
+                # print(f"{model_name}: Allocated: {torch.cuda.memory_allocated() / 1e6} MB Reserved: {torch.cuda.memory_reserved() / 1e6} MB")
+                # print(torch.cuda.memory_summary())
+                print(model_name)
+                try:
+                    torch.cuda.memory._dump_snapshot(f"memory_snapshots/{model_name}.pickle")
+                except Exception as e:
+                    print(f"Failed to capture memory snapshot {e}")
+                # breakpoint()
+                PROFILER.step()
+                if PROFILER.profiler is not None and PROFILER.profiler.kineto_results is not None:
+                    print("timeline in hook")
+                    PROFILER.export_memory_timeline(
+                        path=f"/opt/app-root/src/masters-thesis/memory_timelines/{model_name}_memory_timeline.html"
+                    )
+                    print("Finished timeline in hook")
+                else:
+                    print("Profiler not ready")
+
+            return memory_hook
+
+        for name, layer in self.model.named_modules():
+            layer.register_forward_hook(get_hook(name))
 
     def configure_optimizers(
         self,

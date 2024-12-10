@@ -1,5 +1,4 @@
-
-from typing import Any 
+from typing import Any
 from functools import partial
 import os
 import logging
@@ -64,6 +63,7 @@ class SemanticSegmentationTask(BaseTask):
         class_names: list[str] | None = None,
         tiled_inference_parameters: TiledInferenceParameters = None,
         test_dataloaders_names: list[str] | None = None,
+        reduce_lr: list[tuple[str, float]] | None = None,
     ) -> None:
         """Constructor
 
@@ -162,10 +162,23 @@ class SemanticSegmentationTask(BaseTask):
         optimizer = self.hparams["optimizer"]
         if optimizer is None:
             optimizer = "Adam"
+        if self.hparams.get("reduce_lr", None) is not None:
+            parameters = []
+            for param_name, reduce_factor in self.hparams["reduce_lr"]:
+                p = [p for n, p in self.model.named_parameters() if param_name in n]
+                parameters.append({"params": p, "lr": self.hparams["lr"] / reduce_factor})
+            rest_p = [
+                p
+                for n, p in self.model.named_parameters()
+                if all(param_name not in n for param_name, _ in self.hparams["reduce_lr"])
+            ]
+            parameters.append({"params": rest_p})
+        else:
+            parameters = self.parameters()
         return optimizer_factory(
             optimizer,
             self.hparams["lr"],
-            self.parameters(),
+            parameters,
             self.hparams["optimizer_hparams"],
             self.hparams["scheduler"],
             self.monitor,

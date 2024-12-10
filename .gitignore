@@ -20,3 +20,7 @@ examples/**/*tif*
 *.stdout
 *.log
 **/*.un~
+
+
+.pixi
+tests_terratorch_cli
